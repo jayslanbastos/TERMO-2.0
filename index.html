@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Termo por Temas - Jogo de Palavras</title>
+    <!-- CSS Tailwind via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome para ícones -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto+Flex:wght@400;700;900&display=swap');
+
+        body {
+            font-family: 'Roboto Flex', sans-serif;
+            touch-action: manipulation;
+        }
+
+        /* Animações das cartas (Flip Effect) */
+        .tile {
+            perspective: 1000px;
+            transition: transform 0.15s ease-in-out;
+        }
+
+        .tile-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+        }
+
+        .tile.flipped .tile-inner {
+            transform: rotateX(180deg);
+        }
+
+        .tile-front, .tile-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            border-radius: 0.375rem;
+        }
+
+        .tile-front {
+            border: 2px solid #374151;
+            background-color: #111827;
+            color: #ffffff;
+        }
+
+        .tile-back {
+            transform: rotateX(180deg);
+            color: #ffffff;
+        }
+
+        /* Animações adicionais */
+        .pop {
+            animation: popIn 0.1s ease-in-out;
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.8); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        .shake {
+            animation: shakeHorizontal 0.5s ease-in-out;
+        }
+
+        @keyframes shakeHorizontal {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-6px); }
+            40%, 80% { transform: translateX(6px); }
+        }
+
+        /* Cores do Jogo */
+        .correct { background-color: #22c55e !important; border-color: #22c55e !important; } /* Verde */
+        .present { background-color: #eab308 !important; border-color: #eab308 !important; } /* Amarelo */
+        .absent { background-color: #374151 !important; border-color: #374151 !important; }   /* Cinza Escuro */
+
+        /* Modal transitions */
+        .modal {
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .modal.hidden-modal {
+            opacity: 0;
+            pointer-events: none;
+            visibility: hidden;
+        }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen flex flex-col justify-between items-center select-none overflow-x-hidden p-2 sm:p-4">
+
+    <!-- Cabeçalho -->
+    <header class="w-full max-w-md flex justify-between items-center py-2 px-4 border-b border-gray-800">
+        <button id="help-btn" class="text-gray-400 hover:text-white text-xl p-1 transition" title="Como Jogar">
+            <i class="fas fa-question-circle"></i>
+        </button>
+        <h1 class="text-2xl sm:text-3xl font-black tracking-widest text-center uppercase bg-gradient-to-r from-green-400 to-yellow-400 bg-clip-text text-transparent">
+            TERMO
+        </h1>
+        <div class="flex gap-2">
+            <button id="stats-btn" class="text-gray-400 hover:text-white text-xl p-1 transition" title="Estatísticas">
+                <i class="fas fa-chart-bar"></i>
+            </button>
+            <button id="restart-btn" class="text-gray-400 hover:text-white text-xl p-1 transition" title="Novo Jogo">
+                <i class="fas fa-redo-alt"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Notificações Toast -->
+    <div id="toast-container" class="fixed top-16 z-50 flex flex-col items-center pointer-events-none gap-2"></div>
+
+    <!-- Seletor de Tema -->
+    <section class="w-full max-w-md my-2 px-2 flex flex-col items-center gap-1">
+        <label for="theme-select" class="text-xs uppercase font-bold text-gray-400 tracking-wider">Selecione o Tema:</label>
+        <select id="theme-select" class="w-full bg-gray-900 border border-gray-700 text-white font-bold py-2 px-3 rounded-lg text-sm focus:outline-none focus:border-green-500 transition cursor-pointer">
+            <!-- Opções inseridas via JavaScript -->
+        </select>
+    </section>
+
+    <!-- Tabuleiro de Jogos (Grid 6x5) -->
+    <main class="flex-1 flex items-center justify-center my-2 sm:my-4 w-full px-2">
+        <div id="board" class="grid grid-rows-6 gap-2 sm:gap-3 p-2 max-w-sm sm:max-w-md md:max-w-lg w-full">
+            <!-- Os tiles serão inseridos via JavaScript -->
+        </div>
+    </main>
+
+    <!-- Teclado Virtual -->
+    <footer class="w-full max-w-lg flex flex-col gap-1.5 sm:gap-2 pb-3">
+        <div class="flex justify-center gap-1 sm:gap-1.5 w-full" id="keyboard-row-1"></div>
+        <div class="flex justify-center gap-1 sm:gap-1.5 w-full" id="keyboard-row-2"></div>
+        <div class="flex justify-center gap-1 sm:gap-1.5 w-full" id="keyboard-row-3"></div>
+    </footer>
+
+    <!-- Modal de Estatísticas -->
+    <div id="stats-modal" class="modal hidden-modal fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-sm w-full shadow-2xl relative">
+            <button class="close-modal absolute top-3 right-4 text-gray-400 hover:text-white text-xl">&times;</button>
+            <h2 class="text-xl font-bold text-center mb-4 text-white">Estatísticas</h2>
+            
+            <div class="grid grid-cols-4 gap-2 text-center mb-6">
+                <div class="bg-gray-800 p-2 rounded-lg">
+                    <div id="stat-played" class="text-2xl font-black text-green-400">0</div>
+                    <div class="text-[10px] text-gray-400 uppercase font-semibold">Jogos</div>
+                </div>
+                <div class="bg-gray-800 p-2 rounded-lg">
+                    <div id="stat-win-pct" class="text-2xl font-black text-green-400">0%</div>
+                    <div class="text-[10px] text-gray-400 uppercase font-semibold">Vitórias</div>
+                </div>
+                <div class="bg-gray-800 p-2 rounded-lg">
+                    <div id="stat-streak" class="text-2xl font-black text-yellow-400">0</div>
+                    <div class="text-[10px] text-gray-400 uppercase font-semibold">Sequência</div>
+                </div>
+                <div class="bg-gray-800 p-2 rounded-lg">
+                    <div id="stat-max-streak" class="text-2xl font-black text-yellow-400">0</div>
+                    <div class="text-[10px] text-gray-400 uppercase font-semibold">Melhor</div>
+                </div>
+            </div>
+
+            <button id="modal-play-again" class="w-full py-3 bg-green-600 hover:bg-green-500 font-bold rounded-lg transition text-white shadow-lg">
+                JOGAR NOVAMENTE
+            </button>
+        </div>
+    </div>
+
+    <!-- Modal de Como Jogar -->
+    <div id="help-modal" class="modal hidden-modal fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-sm w-full shadow-2xl relative text-sm">
+            <button class="close-modal absolute top-3 right-4 text-gray-400 hover:text-white text-xl">&times;</button>
+            <h2 class="text-xl font-bold text-center mb-4 text-white">Como Jogar</h2>
+            
+            <p class="mb-3 text-gray-300">Escolha um tema e adivinhe a palavra secreta de 5 letras em até 6 tentativas.</p>
+            
+            <hr class="border-gray-800 my-3">
+            
+            <p class="font-bold mb-2 text-white">Exemplos de Cores:</p>
+            
+            <div class="space-y-3">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded bg-green-500 font-bold flex items-center justify-center text-white">T</div>
+                    <span class="text-gray-300">A letra <b>T</b> faz parte da palavra e está na <b>posição correta</b>.</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded bg-yellow-500 font-bold flex items-center justify-center text-white">E</div>
+                    <span class="text-gray-300">A letra <b>E</b> faz parte da palavra, mas em <b>outra posição</b>.</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded bg-gray-700 font-bold flex items-center justify-center text-white">R</div>
+                    <span class="text-gray-300">A letra <b>R</b> <b>não existe</b> na palavra.</span>
+                </div>
+            </div>
+
+            <button class="close-modal w-full py-2.5 mt-6 bg-gray-800 hover:bg-gray-700 font-bold rounded-lg transition text-white">
+                Entendi!
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // =========================================================================
+        // BANCO DE PALAVRAS POR CATEGORIA (Apenas palavras de 5 letras)
+        // =========================================================================
+        const CATEGORIES = {
+            "TODOS": [], // Preenchido dinamicamente com todas as palavras
+            "Animais": [
+                "COALA", "ZEBRA", "TIGRE", "POLVO", "COBRA", "PORCO", "HIENA", "GARCA", 
+                "CISNE", "BICHO", "DINGO", "CORVO", "CUPIM", "PARGO", "LESMA", 
+                "PULGA", "MOSCA", "URUTU", "ARARA"
+            ],
+            "Comidas, Frutas e Bebidas": [
+                "ARROZ", "CARNE", "PUDIM", "TORTA", "PEIXE", "SALDA", "PIZZA", "ROSCA", 
+                "CACAU", "MELAO", "LIMAO", "AMORA", "MANGA", "VINHO", "CIDRA", 
+                "CALDO", "MASSA", "SUSHI", "CREME", "TACOS"
+            ],
+            "Objetos e Ferramentas": [
+                "LAPIS", "LIVRO", "CHAVE", "COPO", "PRATO", "GARFO", "JARRA", "BALDE", 
+                "BOLSA", "CAIXA", "REGUA", "DISCO", "LANCA", "CORDA", "RADIO", 
+                "RADAR", "DRONE", "BOCAL", "ROLHA", "PREGO", "PORCA"
+            ],
+            "Partes do Corpo": [
+                "BRACO", "PERNA", "LABIO", "DENTE", "BARBA", "COURO", "NARIZ", 
+                "PALMA", "FIBRA", "ROSTO", "BUSTO", "DORSO", 
+                "CALDA", "CASCO", "GARRA", "TESTA"
+            ],
+            "Natureza e Geografia": [
+                "NUVEM", "CHUVA", "VENTO", "GEADA", "PRAIA", "ROCHA", "TERRA", "MONTE", 
+                "CAMPO", "LAGOA", "DELTA", "SALTO", "GRUTA", "SELVA", "OASIS", "CLIMA", 
+                 "MORRO"
+            ],
+            "Cores e Visuais": [
+                "VERDE", "PRETO", "PRATA", "LOURO", "RUBRO", "PARDO", "CLARO", "TURVO", 
+                "OPACO", "FOSCO", "LINDO", "MAGRO", "BAIXO", "GORDO", "CURTO", "LONGO", 
+                "DENSO", "BRUTO", "LIMPO"
+            ],
+            "Profissões e Papéis": [
+                "BISPO", "PADRE", "POETA", "HEROI", 
+                "VILAO", "RIVAL", "SOCIO", "DUQUE", "BARAO", "CONDE", "GENIO", "CHEFE", 
+                "TUTOR", "LORDE"
+            ],
+            "Sentimentos e Estados": [
+                "AMOR", "RAIVA", "PAVOR", "AFETO", "CIUME", "CALMA", "TEDIO", "PESAR", 
+                "SUSTO", "GRATA", "TENSO", "BRAVO", "FELIZ", "ACESO", "DORES", "VAZIO", 
+                "CHEIO", "NOBRE", "SAGAZ"
+            ],
+            "Verbos": [
+                "ANDAR", "COMER", "BEBER", "FALAR", "OUVIR", "OLHAR", "DIZER", "FAZER", 
+                "PODER", "SABER", "PARAR", "FICAR", "ACHAR", "SUBIR", 
+                "ABRIR", "LAVAR", "LEVAR"
+            ],
+            "Lugares e Espaços": [
+                "HOTEL", "BANHO", "SALAO", "USINA", "CIRCO", "ARENA", "BANCA", "TENDA", 
+                "POSTO", "PORTO", "PATIO", "PORAO", "SOTAO", "MUSEU", "PRACA", "LOCAL", "PISTA"
+            ]
+        };
+
+        // Consolida todas as palavras na categoria "TODOS"
+        let allWords = [];
+        Object.keys(CATEGORIES).forEach(cat => {
+            if (cat !== "TODOS") {
+                allWords = allWords.concat(CATEGORIES[cat]);
+            }
+        });
+        CATEGORIES["TODOS"] = [...new Set(allWords)];
+
+        // Mapeamento do teclado
+        const KEYBOARD_LAYOUT = [
+            ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+            ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
+            ["ENTER", "Z", "X", "C", "V", "B", "N", "M", "BACKSPACE"]
+        ];
+
+        // Estado do Jogo
+        let currentTheme = "TODOS";
+        let secretWord = "";
+        let currentAttempt = 0;
+        let currentTileIndex = 0;
+        let isGameOver = false;
+        let boardState = Array(6).fill("");
+        let stats = { played: 0, wins: 0, streak: 0, maxStreak: 0 };
+
+        // Elementos DOM
+        const boardEl = document.getElementById("board");
+        const themeSelect = document.getElementById("theme-select");
+        const statsModal = document.getElementById("stats-modal");
+        const helpModal = document.getElementById("help-modal");
+        const toastContainer = document.getElementById("toast-container");
+
+        window.onload = () => {
+            populateThemeSelect();
+            loadStats();
+            initGame();
+            setupKeyboard();
+            setupEventListeners();
+        };
+
+        // Preenche o Select de Temas
+        function populateThemeSelect() {
+            themeSelect.innerHTML = "";
+            Object.keys(CATEGORIES).forEach(category => {
+                const option = document.createElement("option");
+                option.value = category;
+                option.textContent = category === "TODOS" ? "🎲 Todos os Temas (Misturado)" : category;
+                themeSelect.appendChild(option);
+            });
+        }
+
+        // Inicializa/Reinicia o Jogo
+        function initGame() {
+            const wordList = CATEGORIES[currentTheme];
+            
+            if (!wordList || wordList.length === 0) {
+                showToast("Nenhuma palavra encontrada neste tema!", 3000);
+                return;
+            }
+
+            // Selecionar palavra aleatória do tema escolhido
+            secretWord = wordList[Math.floor(Math.random() * wordList.length)].toUpperCase();
+
+            currentAttempt = 0;
+            currentTileIndex = 0;
+            isGameOver = false;
+            boardState = Array(6).fill("");
+
+            // Limpar/Criar Tabuleiro
+            boardEl.innerHTML = "";
+            for (let r = 0; r < 6; r++) {
+                const row = document.createElement("div");
+                row.className = "grid grid-cols-5 gap-2 sm:gap-3 w-full";
+                row.id = `row-${r}`;
+
+                for (let c = 0; c < 5; c++) {
+                    const tile = document.createElement("div");
+                    tile.className = "tile w-full aspect-square min-h-[52px] sm:min-h-[64px]";
+                    tile.id = `tile-${r}-${c}`;
+                    
+                    tile.innerHTML = `
+                        <div class="tile-inner">
+                            <div class="tile-front font-black text-2xl sm:text-3xl md:text-4xl shadow-md"></div>
+                            <div class="tile-back font-black text-2xl sm:text-3xl md:text-4xl shadow-md"></div>
+                        </div>
+                    `;
+                    row.appendChild(tile);
+                }
+                boardEl.appendChild(row);
+            }
+
+            resetKeyboardStyles();
+        }
+
+        function setupKeyboard() {
+            KEYBOARD_LAYOUT.forEach((rowKeys, rowIndex) => {
+                const rowEl = document.getElementById(`keyboard-row-${rowIndex + 1}`);
+                rowEl.innerHTML = "";
+
+                rowKeys.forEach(key => {
+                    const button = document.createElement("button");
+                    let keyClass = "h-12 sm:h-14 rounded-md font-bold text-sm sm:text-base flex items-center justify-center select-none transition active:scale-95 bg-gray-700 hover:bg-gray-600 text-white flex-1 shadow";
+
+                    if (key === "ENTER" || key === "BACKSPACE") {
+                        keyClass += " px-2 sm:px-4 text-xs sm:text-sm font-semibold bg-gray-600 flex-[1.5]";
+                    }
+
+                    button.className = keyClass;
+                    button.setAttribute("data-key", key);
+
+                    if (key === "BACKSPACE") {
+                        button.innerHTML = `<i class="fas fa-backspace text-base"></i>`;
+                    } else {
+                        button.textContent = key;
+                    }
+
+                    button.addEventListener("click", () => handleKeyPress(key));
+                    rowEl.appendChild(button);
+                });
+            });
+        }
+
+        function resetKeyboardStyles() {
+            const keys = document.querySelectorAll("[data-key]");
+            keys.forEach(key => {
+                key.className = key.className.replace(/correct|present|absent/g, "").trim();
+                if (!key.classList.contains("bg-gray-600") && !key.classList.contains("bg-gray-700")) {
+                    key.classList.add("bg-gray-700");
+                }
+            });
+        }
+
+        function setupEventListeners() {
+            // Alterar Tema
+            themeSelect.addEventListener("change", (e) => {
+                currentTheme = e.target.value;
+                initGame();
+                showToast(`Tema alterado: ${currentTheme}`);
+            });
+
+            // Teclado Físico
+            document.addEventListener("keydown", (e) => {
+                if (isGameOver) return;
+                
+                const key = e.key.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+                if (key === "ENTER") {
+                    handleKeyPress("ENTER");
+                } else if (key === "BACKSPACE") {
+                    handleKeyPress("BACKSPACE");
+                } else if (/^[A-Z]$/.test(key)) {
+                    handleKeyPress(key);
+                }
+            });
+
+            // Botões
+            document.getElementById("restart-btn").addEventListener("click", () => {
+                initGame();
+                showToast("Novo jogo iniciado!");
+            });
+
+            document.getElementById("stats-btn").addEventListener("click", () => {
+                updateStatsUI();
+                openModal(statsModal);
+            });
+
+            document.getElementById("help-btn").addEventListener("click", () => {
+                openModal(helpModal);
+            });
+
+            document.querySelectorAll(".close-modal").forEach(btn => {
+                btn.addEventListener("click", () => {
+                    closeModal(statsModal);
+                    closeModal(helpModal);
+                });
+            });
+
+            document.getElementById("modal-play-again").addEventListener("click", () => {
+                closeModal(statsModal);
+                initGame();
+            });
+        }
+
+        function handleKeyPress(key) {
+            if (isGameOver) return;
+
+            if (key === "BACKSPACE") {
+                deleteLetter();
+            } else if (key === "ENTER") {
+                submitAttempt();
+            } else if (/^[A-Z]$/.test(key)) {
+                addLetter(key);
+            }
+        }
+
+        function addLetter(letter) {
+            if (currentTileIndex < 5) {
+                const tile = document.getElementById(`tile-${currentAttempt}-${currentTileIndex}`);
+                const front = tile.querySelector(".tile-front");
+                front.textContent = letter;
+                
+                tile.classList.add("pop");
+                setTimeout(() => tile.classList.remove("pop"), 100);
+
+                boardState[currentAttempt] += letter;
+                currentTileIndex++;
+            }
+        }
+
+        function deleteLetter() {
+            if (currentTileIndex > 0) {
+                currentTileIndex--;
+                const tile = document.getElementById(`tile-${currentAttempt}-${currentTileIndex}`);
+                const front = tile.querySelector(".tile-front");
+                front.textContent = "";
+                boardState[currentAttempt] = boardState[currentAttempt].slice(0, -1);
+            }
+        }
+
+        function submitAttempt() {
+            const guess = boardState[currentAttempt];
+
+            if (guess.length !== 5) {
+                showToast("A palavra precisa ter 5 letras!");
+                shakeRow(currentAttempt);
+                return;
+            }
+
+            revealAttempt(guess);
+        }
+
+        function revealAttempt(guess) {
+            const rowTiles = [];
+            for (let c = 0; c < 5; c++) {
+                rowTiles.push(document.getElementById(`tile-${currentAttempt}-${c}`));
+            }
+
+            const secretArr = secretWord.split("");
+            const guessArr = guess.split("");
+            const tileStatuses = Array(5).fill("absent");
+
+            // 1ª Passagem: VERDES
+            guessArr.forEach((char, index) => {
+                if (char === secretArr[index]) {
+                    tileStatuses[index] = "correct";
+                    secretArr[index] = null;
+                }
+            });
+
+            // 2ª Passagem: AMARELOS
+            guessArr.forEach((char, index) => {
+                if (tileStatuses[index] !== "correct") {
+                    const foundIndex = secretArr.indexOf(char);
+                    if (foundIndex !== -1) {
+                        tileStatuses[index] = "present";
+                        secretArr[foundIndex] = null;
+                    }
+                }
+            });
+
+            rowTiles.forEach((tile, index) => {
+                setTimeout(() => {
+                    const back = tile.querySelector(".tile-back");
+                    back.textContent = guessArr[index];
+                    
+                    const statusClass = tileStatuses[index];
+                    back.classList.add(statusClass);
+
+                    tile.classList.add("flipped");
+
+                    if (index === 4) {
+                        setTimeout(() => {
+                            updateKeyboardColors(guessArr, tileStatuses);
+                            checkGameEnd(guess);
+                        }, 300);
+                    }
+                }, index * 250);
+            });
+        }
+
+        function updateKeyboardColors(guessArr, statuses) {
+            guessArr.forEach((char, index) => {
+                const keyBtn = document.querySelector(`[data-key="${char}"]`);
+                if (!keyBtn) return;
+
+                const currentStatus = statuses[index];
+
+                if (currentStatus === "correct") {
+                    keyBtn.classList.remove("present", "absent", "bg-gray-700", "bg-gray-600");
+                    keyBtn.classList.add("correct");
+                } else if (currentStatus === "present" && !keyBtn.classList.contains("correct")) {
+                    keyBtn.classList.remove("absent", "bg-gray-700", "bg-gray-600");
+                    keyBtn.classList.add("present");
+                } else if (currentStatus === "absent" && !keyBtn.classList.contains("correct") && !keyBtn.classList.contains("present")) {
+                    keyBtn.classList.remove("bg-gray-700", "bg-gray-600");
+                    keyBtn.classList.add("absent");
+                }
+            });
+        }
+
+        function checkGameEnd(guess) {
+            if (guess === secretWord) {
+                isGameOver = true;
+                showToast("Sensacional! Você acertou! 🎉", 3000);
+                saveStats(true);
+                setTimeout(() => {
+                    updateStatsUI();
+                    openModal(statsModal);
+                }, 1500);
+            } else if (currentAttempt === 5) {
+                isGameOver = true;
+                showToast(`Fim de jogo! A palavra era: ${secretWord}`, 4000);
+                saveStats(false);
+                setTimeout(() => {
+                    updateStatsUI();
+                    openModal(statsModal);
+                }, 2000);
+            } else {
+                currentAttempt++;
+                currentTileIndex = 0;
+            }
+        }
+
+        function shakeRow(rowIndex) {
+            const row = document.getElementById(`row-${rowIndex}`);
+            row.classList.add("shake");
+            setTimeout(() => row.classList.remove("shake"), 500);
+        }
+
+        function showToast(message, duration = 2000) {
+            const toast = document.createElement("div");
+            toast.className = "bg-gray-100 text-gray-900 font-bold px-4 py-2 rounded-lg shadow-lg text-sm transition-all duration-300 opacity-0 transform -translate-y-2";
+            toast.textContent = message;
+
+            toastContainer.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.remove("opacity-0", "-translate-y-2");
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.add("opacity-0", "-translate-y-2");
+                setTimeout(() => toast.remove(), 300);
+            }, duration);
+        }
+
+        function openModal(modal) {
+            modal.classList.remove("hidden-modal");
+        }
+
+        function closeModal(modal) {
+            modal.classList.add("hidden-modal");
+        }
+
+        function loadStats() {
+            const savedStats = localStorage.getItem("termo_stats");
+            if (savedStats) {
+                stats = JSON.parse(savedStats);
+            }
+        }
+
+        function saveStats(won) {
+            stats.played++;
+            if (won) {
+                stats.wins++;
+                stats.streak++;
+                if (stats.streak > stats.maxStreak) {
+                    stats.maxStreak = stats.streak;
+                }
+            } else {
+                stats.streak = 0;
+            }
+            localStorage.setItem("termo_stats", JSON.stringify(stats));
+        }
+
+        function updateStatsUI() {
+            document.getElementById("stat-played").textContent = stats.played;
+            const winPct = stats.played > 0 ? Math.round((stats.wins / stats.played) * 100) : 0;
+            document.getElementById("stat-win-pct").textContent = `${winPct}%`;
+            document.getElementById("stat-streak").textContent = stats.streak;
+            document.getElementById("stat-max-streak").textContent = stats.maxStreak;
+        }
+    </script>
+</body>
+</html>
